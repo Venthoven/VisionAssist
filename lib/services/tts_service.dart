@@ -52,7 +52,11 @@ class TtsService {
 
   /// Membacakan teks singkat (di bawah limit). Untuk teks panjang
   /// (dokumen, hasil OCR banyak halaman), gunakan [speakLong] sebagai gantinya.
-  Future<void> speak(String text) async {
+  /// [saveToHistory] disediakan untuk kompatibilitas pemanggilan dari
+  /// halaman lain (misalnya detection_screen.dart) — saat ini parameter
+  /// tidak mengubah perilaku speak(), penyimpanan riwayat tetap dilakukan
+  /// secara terpisah oleh masing-masing screen melalui DatabaseHelper.
+  Future<void> speak(String text, {bool saveToHistory = true}) async {
     if (text.isEmpty) return;
     await stop();
     _stopRequested = false;
