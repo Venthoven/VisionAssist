@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:docx_to_text/docx_to_text.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../services/tts_service.dart';
 import '../services/database_helper.dart';
@@ -55,74 +53,11 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'png', 'jpg', 'jpeg'],
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
     );
-    if (result == null || result.files.isEmpty) return;
-
-    final file = result.files.first;
-    if (file.path == null) return;
-
-    final ext = file.extension?.toLowerCase() ?? '';
-
-    // File Word (.docx / .doc)
-    if (ext == 'docx' || ext == 'doc') {
-      setState(() {
-        _isProcessing = true;
-        _importedFileName = file.name;
-        _importedImagePath = null;
-        _statusText = 'Memproses file Word...';
-        _resultText = '';
-      });
-      try {
-        final bytes = await File(file.path!).readAsBytes();
-        final text = docxToText(bytes);
-        setState(() {
-          _resultText = text.trim();
-          _importedFileName = file.name;
-          _statusText = _resultText.isNotEmpty
-              ? 'Teks berhasil diekstrak (${_resultText.length} karakter)'
-              : 'Tidak ada teks ditemukan dalam file';
-          _isProcessing = false;
-        });
-        if (_resultText.isNotEmpty) {
-          await DatabaseHelper.instance.insertOcr(extractedText: _resultText);
-        }
-      } catch (e) {
-        setState(() {
-          _statusText = 'Gagal membaca file Word';
-          _isProcessing = false;
-        });
-      }
-      return;
-    }
-
-    // File teks biasa (.txt)
-    if (ext == 'txt') {
-      final text = await File(file.path!).readAsString();
-      setState(() {
-        _resultText = text.trim();
-        _importedFileName = file.name;
-        _importedImagePath = null;
-        _statusText = 'Teks berhasil diekstrak (${_resultText.length} karakter)';
-        _isProcessing = false;
-      });
-      if (_resultText.isNotEmpty) {
-        await DatabaseHelper.instance.insertOcr(extractedText: _resultText);
-      }
-      return;
-    }
-
-    // Gambar & PDF → ML Kit OCR
-    if (['png', 'jpg', 'jpeg', 'pdf'].contains(ext)) {
-      _processImage(file.path!, file.name);
-      return;
-    }
-
-    setState(() {
-      _statusText = 'Format file belum didukung: .$ext';
-    });
+    if (image == null) return;
+    _processImage(image.path, image.name);
   }
 
   Future<void> _processImage(String path, String name) async {
@@ -148,7 +83,11 @@ class _ImportScreenState extends State<ImportScreen> {
       });
 
       if (_resultText.isNotEmpty) {
-        await DatabaseHelper.instance.insertOcr(extractedText: _resultText);
+        await DatabaseHelper.instance.insertHistory(
+          type: 'Impor File',
+          result: _resultText,
+          imagePath: path,
+        );
       }
     } catch (e) {
       setState(() {
@@ -161,8 +100,15 @@ class _ImportScreenState extends State<ImportScreen> {
   Future<void> _speakText() async {
     if (_resultText.isEmpty) return;
     setState(() => _isSpeaking = true);
-    await TtsService.instance.speak(_resultText);
-    setState(() => _isSpeaking = false);
+
+    // Gunakan speakLong() bukan speak() biasa, karena hasil ekstraksi dari
+    // dokumen Word/PDF panjang (30-40 halaman) bisa berisi puluhan ribu
+    // karakter — jauh melebihi batas internal TTS engine Android
+    // (sekitar 4000 karakter per panggilan). speakLong() akan memecah teks
+    // jadi beberapa potongan kecil dan membacakannya berurutan tanpa gagal.
+    await TtsService.instance.speakLong(_resultText);
+
+    if (mounted) setState(() => _isSpeaking = false);
   }
 
   Future<void> _stopSpeaking() async {
@@ -197,14 +143,18 @@ class _ImportScreenState extends State<ImportScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  const Text('Impor File',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600)),
+                  const Text(
+                    'Impor File',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1A0D21),
                       borderRadius: BorderRadius.circular(20),
@@ -217,12 +167,15 @@ class _ImportScreenState extends State<ImportScreen> {
                         Icon(Icons.download_rounded,
                             color: Color(0xFF9C27B0), size: 12),
                         SizedBox(width: 5),
-                        Text('IMPOR',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF9C27B0),
-                                letterSpacing: 1)),
+                        Text(
+                          'IMPOR',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF9C27B0),
+                            letterSpacing: 1,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -230,7 +183,6 @@ class _ImportScreenState extends State<ImportScreen> {
               ),
             ),
 
-            // Preview area
             Container(
               height: 200,
               margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -247,10 +199,6 @@ class _ImportScreenState extends State<ImportScreen> {
                         Image.file(
                           File(_importedImagePath!),
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Center(
-                            child: Icon(Icons.insert_drive_file_rounded,
-                                color: Color(0xFF9C27B0), size: 48),
-                          ),
                         ),
                         Container(color: Colors.black38),
                         if (_isProcessing)
@@ -258,7 +206,8 @@ class _ImportScreenState extends State<ImportScreen> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                CircularProgressIndicator(color: Color(0xFF9C27B0)),
+                                CircularProgressIndicator(
+                                    color: Color(0xFF9C27B0)),
                                 SizedBox(height: 12),
                                 Text('Mengekstrak teks...',
                                     style: TextStyle(color: Colors.white)),
@@ -282,10 +231,12 @@ class _ImportScreenState extends State<ImportScreen> {
                                     color: Color(0xFF9C27B0), size: 14),
                                 const SizedBox(width: 6),
                                 Expanded(
-                                  child: Text(_importedFileName,
-                                      style: const TextStyle(
-                                          color: Colors.white, fontSize: 11),
-                                      overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    _importedFileName,
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 11),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ],
                             ),
@@ -293,60 +244,35 @@ class _ImportScreenState extends State<ImportScreen> {
                         ),
                       ],
                     )
-                  : _importedFileName.isNotEmpty
-                      // Tampilan untuk file non-gambar (docx, txt, pdf)
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (_isProcessing)
-                                const CircularProgressIndicator(
-                                    color: Color(0xFF9C27B0))
-                              else
-                                const Icon(Icons.insert_drive_file_rounded,
-                                    color: Color(0xFF9C27B0), size: 48),
-                              const SizedBox(height: 12),
-                              Text(_importedFileName,
-                                  style: const TextStyle(
-                                      color: Colors.white70, fontSize: 13),
-                                  overflow: TextOverflow.ellipsis),
-                              if (_isProcessing)
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 8),
-                                  child: Text('Mengekstrak teks...',
-                                      style: TextStyle(
-                                          color: Colors.white54, fontSize: 11)),
-                                ),
-                            ],
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF9C27B0).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                                color: const Color(0xFF9C27B0).withOpacity(0.3)),
                           ),
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 64,
-                              height: 64,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF9C27B0).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                    color: const Color(0xFF9C27B0)
-                                        .withOpacity(0.3)),
-                              ),
-                              child: const Icon(Icons.upload_file_rounded,
-                                  color: Color(0xFF9C27B0), size: 32),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text('Belum ada file diimpor',
-                                style: TextStyle(
-                                    color: Colors.white54, fontSize: 14)),
-                            const SizedBox(height: 6),
-                            const Text(
-                                'Ketuk tombol di bawah untuk memilih file',
-                                style: TextStyle(
-                                    color: Colors.white24, fontSize: 11)),
-                          ],
+                          child: const Icon(Icons.upload_file_rounded,
+                              color: Color(0xFF9C27B0), size: 32),
                         ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Belum ada file diimpor',
+                          style: TextStyle(
+                              color: Colors.white54, fontSize: 14),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Ketuk tombol di bawah untuk memilih file',
+                          style: TextStyle(
+                              color: Colors.white24, fontSize: 11),
+                        ),
+                      ],
+                    ),
             ),
 
             const SizedBox(height: 12),
@@ -359,9 +285,11 @@ class _ImportScreenState extends State<ImportScreen> {
                 child: ElevatedButton.icon(
                   onPressed: _isProcessing ? null : _showImportOptions,
                   icon: const Icon(Icons.download_rounded, size: 20),
-                  label: const Text('Pilih Sumber Impor',
-                      style: TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  label: const Text(
+                    'Pilih Sumber Impor',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A0D21),
                     foregroundColor: const Color(0xFF9C27B0),
@@ -381,8 +309,8 @@ class _ImportScreenState extends State<ImportScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1A1A1A),
                   borderRadius: BorderRadius.circular(12),
@@ -394,9 +322,11 @@ class _ImportScreenState extends State<ImportScreen> {
                         size: 15, color: Color(0xFF666666)),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(_statusText,
-                          style: const TextStyle(
-                              color: Color(0xFF999999), fontSize: 12)),
+                      child: Text(
+                        _statusText,
+                        style: const TextStyle(
+                            color: Color(0xFF999999), fontSize: 12),
+                      ),
                     ),
                   ],
                 ),
@@ -420,16 +350,20 @@ class _ImportScreenState extends State<ImportScreen> {
                       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
                       child: Row(
                         children: [
-                          const Text('HASIL EKSTRAKSI TEKS',
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  color: Color(0xFF666666),
-                                  letterSpacing: 1)),
+                          const Text(
+                            'HASIL EKSTRAKSI TEKS',
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF666666),
+                                letterSpacing: 1),
+                          ),
                           const Spacer(),
                           if (_resultText.isNotEmpty)
-                            Text('${_resultText.length} karakter',
-                                style: const TextStyle(
-                                    fontSize: 10, color: Color(0xFF666666))),
+                            Text(
+                              '${_resultText.length} karakter',
+                              style: const TextStyle(
+                                  fontSize: 10, color: Color(0xFF666666)),
+                            ),
                         ],
                       ),
                     ),
@@ -517,7 +451,6 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 }
 
-// ── Bottom Sheet Pilihan Impor ──
 class _ImportBottomSheet extends StatelessWidget {
   final VoidCallback onImportFile;
   final VoidCallback onImportImage;
@@ -546,8 +479,14 @@ class _ImportBottomSheet extends StatelessWidget {
             ),
           ),
           _SheetOption(
+            icon: Icons.download_rounded,
+            label: 'Mengimpor file dari Glasses',
+            onTap: onImportFile,
+          ),
+          const SizedBox(height: 10),
+          _SheetOption(
             icon: Icons.insert_drive_file_outlined,
-            label: 'Impor File (PDF, TXT, Word)',
+            label: 'Impor File',
             onTap: onImportFile,
           ),
           const SizedBox(height: 10),
@@ -559,7 +498,7 @@ class _ImportBottomSheet extends StatelessWidget {
           const SizedBox(height: 10),
           _SheetOption(
             icon: Icons.close_rounded,
-            label: 'Batal',
+            label: 'Membatalkan',
             onTap: onCancel,
             isCancel: true,
           ),
@@ -591,7 +530,9 @@ class _SheetOption extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         decoration: BoxDecoration(
-          color: isCancel ? const Color(0xFF1A1A1A) : const Color(0xFF1E1E1E),
+          color: isCancel
+              ? const Color(0xFF1A1A1A)
+              : const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isCancel
@@ -602,15 +543,20 @@ class _SheetOption extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                color: isCancel ? Colors.white38 : Colors.white, size: 20),
+            Icon(
+              icon,
+              color: isCancel ? Colors.white38 : Colors.white,
+              size: 20,
+            ),
             const SizedBox(width: 12),
-            Text(label,
-                style: TextStyle(
-                  color: isCancel ? Colors.white38 : Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                )),
+            Text(
+              label,
+              style: TextStyle(
+                color: isCancel ? Colors.white38 : Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),

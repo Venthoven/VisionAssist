@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/tts_service.dart';
 import '../services/database_helper.dart';
+import '../services/ocr_text_sorter.dart';
 
 class OcrScreen extends StatefulWidget {
   const OcrScreen({super.key});
@@ -58,10 +59,15 @@ class _OcrScreenState extends State<OcrScreen> {
       final inputImage = InputImage.fromFilePath(photo.path);
       final RecognizedText result = await _textRecognizer.processImage(inputImage);
 
+      // Urutkan ulang teks berdasarkan posisi baris (bukan urutan blok asli)
+      // agar teks dengan layout 2 kolom (seperti struk belanja) terbaca
+      // sesuai urutan baris yang sebenarnya.
+      final sortedText = OcrTextSorter.sortByLine(result);
+
       setState(() {
-        _recognizedText = result.text.trim();
+        _recognizedText = sortedText.trim();
         _statusText = _recognizedText.isNotEmpty
-            ? 'Teks berhasil dikenali (${result.text.length} karakter)'
+            ? 'Teks berhasil dikenali (${_recognizedText.length} karakter)'
             : 'Tidak ada teks yang ditemukan';
         _isScanning = false;
       });
@@ -94,10 +100,13 @@ class _OcrScreenState extends State<OcrScreen> {
       final inputImage = InputImage.fromFilePath(image.path);
       final RecognizedText result = await _textRecognizer.processImage(inputImage);
 
+      // Sama seperti di atas — urutkan ulang berdasarkan baris
+      final sortedText = OcrTextSorter.sortByLine(result);
+
       setState(() {
-        _recognizedText = result.text.trim();
+        _recognizedText = sortedText.trim();
         _statusText = _recognizedText.isNotEmpty
-            ? 'Teks berhasil dikenali (${result.text.length} karakter)'
+            ? 'Teks berhasil dikenali (${_recognizedText.length} karakter)'
             : 'Tidak ada teks yang ditemukan';
         _isScanning = false;
       });
@@ -119,9 +128,29 @@ class _OcrScreenState extends State<OcrScreen> {
 
   Future<void> _speakText() async {
     if (_recognizedText.isEmpty) return;
+
+    // Stop dulu kalau ada TTS yang sedang berjalan, supaya tidak konflik
+    await TtsService.instance.stop();
+    await Future.delayed(const Duration(milliseconds: 300));
+
     setState(() => _isSpeaking = true);
-    await TtsService.instance.speak(_recognizedText);
-    setState(() => _isSpeaking = false);
+
+    // Bacakan baris per baris secara berurutan, dengan jeda singkat antar baris
+    // supaya pembacaan terdengar jelas dan sesuai urutan yang benar.
+    final lines = _recognizedText
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+
+    for (final line in lines) {
+      if (!_isSpeaking) break; // berhenti kalau user menekan stop di tengah jalan
+      await TtsService.instance.speak(line);
+      await TtsService.instance.waitUntilDone();
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    if (mounted) setState(() => _isSpeaking = false);
   }
 
   Future<void> _stopSpeaking() async {
@@ -209,7 +238,6 @@ class _OcrScreenState extends State<OcrScreen> {
                               ),
                             ),
                           ),
-                        // Scan line guide
                         Center(
                           child: Container(
                             margin: const EdgeInsets.all(20),
