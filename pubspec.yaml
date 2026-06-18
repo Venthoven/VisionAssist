@@ -28,19 +28,24 @@ dependencies:
   # Izin akses
   permission_handler: ^11.3.1
 
-  # Image picker (untuk impor file)
+  # Image picker (untuk impor gambar)
   image_picker: ^0.8.9
 
-  # File picker (untuk PDF, Word, TXT)
-  file_picker: ^8.1.2
+  # File picker (untuk impor file PDF, Word, dll dari file manager)
+  file_picker: ^8.1.4
+
+  # Membaca isi PDF dan mengubah halaman jadi gambar untuk OCR
+  syncfusion_flutter_pdf: ^27.1.58
+  pdf_render: ^1.4.12
+
+  # Membaca isi file Word (.docx)
+  docx_to_text: ^1.0.1
 
   # TFLite untuk YOLO
-  tflite_flutter: ^0.11.0
+  tflite_flutter: ^0.10.4
 
   # Konversi gambar kamera
   image: ^4.1.7
-
-  docx_to_text: ^1.0.1
 
   # UI
   cupertino_icons: ^1.0.8
