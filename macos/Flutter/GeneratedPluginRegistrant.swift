@@ -8,7 +8,7 @@ import Foundation
 import file_picker
 import file_selector_macos
 import flutter_tts
-import pdf_render
+import pdf_render_plus
 import sqflite_darwin
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {

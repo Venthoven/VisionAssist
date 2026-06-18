@@ -568,14 +568,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.3.0"
-  pdf_render:
+  pdf_render_plus:
     dependency: "direct main"
     description:
-      name: pdf_render
-      sha256: bacd2ad8f4f4c9821827003065f5c2f9ca474dd418ff29c68272aab4c0e1e88b
+      name: pdf_render_plus
+      sha256: f6718904b289f0e8b0702c82ce136163912f218741e66107c1990999219f0cf9
       url: "https://pub.dev"
     source: hosted
-    version: "1.4.12"
+    version: "1.4.16"
   permission_handler:
     dependency: "direct main"
     description:
@@ -793,10 +793,10 @@ packages:
     dependency: "direct main"
     description:
       name: tflite_flutter
-      sha256: ffb8651fdb116ab0131d6dc47ff73883e0f634ad1ab12bb2852eef1bbeab4a6a
+      sha256: d5acf30411b6a4ee299be25bad5a44e7fc103231fefaecb1c27f42df48251eb9
       url: "https://pub.dev"
     source: hosted
-    version: "0.10.4"
+    version: "0.10.1"
   typed_data:
     dependency: transitive
     description:

@@ -36,13 +36,13 @@ dependencies:
 
   # Membaca isi PDF dan mengubah halaman jadi gambar untuk OCR
   syncfusion_flutter_pdf: ^27.1.58
-  pdf_render: ^1.4.12
+  pdf_render_plus: ^1.4.16
 
   # Membaca isi file Word (.docx)
   docx_to_text: ^1.0.1
 
   # TFLite untuk YOLO
-  tflite_flutter: ^0.10.4
+  tflite_flutter: 0.10.1
 
   # Konversi gambar kamera
   image: ^4.1.7
